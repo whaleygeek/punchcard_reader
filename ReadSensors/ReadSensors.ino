@@ -2,18 +2,12 @@
 //
 // (c) 2015 D.J.Whale
 
-//TODO
-//read just reg channel
-//card absent/card present state machine based on hole/card on reg
-//while card present
-//read analogs
-//filter into binary
-//turn into a byte, present value
-//or with sticky value
-//as soon as present value goes to zero
-  //clock a byte into memory
-//if see reg go active then inactive without data
-  //clock a zero into memory
+//punching
+//punch data in the 8 columns
+//if you want an empty row, punch the REG hole
+//don't punch all 8+reg else it will see a card removal
+
+//TODO error correcting mode
 //when seen 8, we have the IN phase
 //repeat for another 8, this is the OUT phase
 //now have 16 bytes in memory
@@ -22,6 +16,7 @@
 //e.g. if IN saw a hole and OUT did not, might assume we missed a hole
 //might just be able to do this by ORing each line together
 
+//TODO response protocol
 // return data is in hexascii
 // 00 - power up status/version etc
 // 01 - valid card, 8 bytes follow
@@ -29,12 +24,6 @@
 // 81 - card length error (not 16 clocks)
 // 82 - card data error (significantly different IN and OUT
 //bits numbered from left, so D7 is on left next to REG hole
-
-//punching
-//punch data in the 8 columns
-//if you want an empty row, punch the REG hole
-//you can punch all reg holes, but not needed unless empty row
-
 
 
 #define REGISTRATION A0
@@ -58,6 +47,8 @@
 #define LED_D1       14
 #define LED_D0       15
 
+#define CARD_ROWS 8
+
 
 void setup()
 {
@@ -77,6 +68,7 @@ void setup()
 byte sticky = 0;
 boolean seenReg = false;
 byte row = 0;
+byte card[CARD_ROWS];
 
 typedef enum 
 {
@@ -91,9 +83,7 @@ typedef enum
 STATE state = STATE_REMOVED;
 
 void loop()
-{
-  //delay(250);
-  
+{  
   // Read all 9 inputs (roughly) at same time
   unsigned int reg = analogRead(A0);
 
@@ -195,15 +185,17 @@ void loop()
     break;
     
     case STATE_GAP:
-      //TODO store row
-      Serial.print("row:");
-      Serial.print(row);
-      Serial.print("=");
-      Serial.println(sticky);
+      //Serial.print("row:");
+      //Serial.print(row);
+      //Serial.print("=");
+      //Serial.println(sticky);
+      
+      //store row data in card buffer
+      card[row] = sticky;
       // advance row
       row += 1;
       // more rows?
-      if (row == 8)
+      if (row == CARD_ROWS)
       {
         state = STATE_END;
         //Serial.println(state);
@@ -220,6 +212,7 @@ void loop()
       //Note, later version will read on way out again, and complare in and out readings
       if ((freg == 1) && (now == 0xFF))
       {
+        sendCard(card, CARD_ROWS);
         state = STATE_REMOVED;
         //Serial.println(state);
       }
@@ -247,3 +240,16 @@ void writeLEDs(byte reg, byte data)
   digitalWrite(LED_D1,  data&(1<<1));
   digitalWrite(LED_D0,  data&(1<<0));
 }
+
+void sendCard(byte* pData, byte len)
+{
+  for (byte i=0; i<len; i++)
+  {
+    Serial.print(pData[i]);
+    Serial.print(" ");
+  }
+  Serial.println();
+}
+
+
+
