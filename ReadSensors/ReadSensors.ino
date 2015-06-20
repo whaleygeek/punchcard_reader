@@ -96,19 +96,13 @@ void loop()
   unsigned int d1  = analogRead(D1);
   unsigned int d0  = analogRead(D0);
   
-  // Generate filtered versions (character states)
-  byte freg = getData(reg);
-  byte fd7  = getData(d7);
-  byte fd6  = getData(d6);
-  byte fd5  = getData(d5);
-  byte fd4  = getData(d4);
-  byte fd3  = getData(d3);
-  byte fd2  = getData(d2);
-  byte fd1  = getData(d1);
-  byte fd0  = getData(d0);
+  // Generate filtered version, as a byte
+  byte freg = getData(reg, 0);
+  
+  byte now = getData(d7, 7) | getData(d6, 6) | getData(d5, 5) | getData(d4, 4)
+           | getData(d3, 3) | getData(d2, 2) | getData(d1, 1) | getData(d0, 0);
 
-  // turn into a byte
-  byte now = (fd7<<7)|(fd6<<6)|(fd5<<5)|(fd4<<4)|(fd3<<3)|(fd2<<2)|(fd1<<1)|(fd0<<0);
+  // Show live diagnostics on LEDs
   writeLEDs(freg, now);
 
   // crank round the acquisition state machine
@@ -221,9 +215,9 @@ void loop()
 }
 
 
-byte getData(unsigned int adc)
+byte getData(unsigned int adc, byte bitno)
 {
-  if (adc < 200) return 1;
+  if (adc < 200) return (1<<bitno);
   return 0;
 }
 
