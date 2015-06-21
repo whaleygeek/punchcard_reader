@@ -5,7 +5,16 @@
 # Test harness
 
 import time
+
+# TO use the test harness that returns a test card every second
+#from cardreader import tester as cardreader
+
+# Use this to force using the arduino card reader
+#from cardreader import arduino as cardreader
+
+# Use this to use whatever cardreader/__init__.py sets as default
 import cardreader
+
 
 while True:
   time.sleep(1)

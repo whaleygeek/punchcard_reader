@@ -102,7 +102,7 @@ def readline():
     elif data[0] == '\r':
       line = line_buffer
       line_buffer = ""
-      print(line)
+      #print(line)
       return line
 
     else:
@@ -110,7 +110,7 @@ def readline():
 
 
 def processSerial():
-  global buffer
+  global rec_buffer
 
   # Poll serial to see if there is a line of data waiting
   line = readline()
@@ -123,13 +123,13 @@ def processSerial():
     databuf = result
     rectype = ord(databuf[0])
     payload = databuf[1:]
-    print("rectype:" + str(rectype))
+    #print("rectype:" + str(rectype))
 
     if rectype == REPORT_OK_CARD:
-      print("CARD OK")
-      buffer = decodeDataBuf(payload)
-      if buffer != None:
-        printCard(buffer)
+      #print("CARD OK")
+      rec_buffer = decodeDataBuf(payload)
+      #if rec_buffer != None:
+      #  printCard(rec_buffer)
     else:
       # Just display other rec types on diagnostics
       print("Unhandled rec:" + str(rectype) + " " + str(databuf))
