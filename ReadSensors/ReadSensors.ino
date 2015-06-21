@@ -7,6 +7,11 @@
 // if you want an empty row, punch the REG hole
 // don't punch all 8+REG else it will see a card removal
 
+
+//TODO: add a record type that shows min/max values for zero's and ones on the last read
+//this will be helpful to be able to diagnose problems in the field.
+//min/max 1/0 for all 9 channels, in case of sensor misallignment.
+
 // The ADC is 10 bit (0..1023)
 // The photo transistors conduct when they detect IR
 // So a HOLE will make the transistor conduct, current will flow, and
@@ -15,25 +20,30 @@
 // <  200 = HOLE  = 1
 // >= 200 = PAPER = 0
 
-#define CFG_SENSOR_THRESHOLD 200
+#define CFG_SENSOR_THRESHOLD 512
+
+//Turn on to send a raw ADC value report every time it changes
+//#define CFGEN_SEND_ADC_REPORTS
 
 //Turn this on to turn a state change report every state change
 //#define CFGEN_SEND_STATE_REPORTS
 
 //Turn this on to send row data reports every detected row
-#define CFGEN_SEND_ROW_REPORTS
+//#define CFGEN_SEND_ROW_REPORTS
 
+// Pinouts for Sparkfun ProMicro:
+// https://learn.sparkfun.com/tutorials/pro-micro--fio-v3-hookup-guide/hardware-overview-pro-micro
 
 #define NUM_CHANNELS 9
-#define REG          A0
-#define D7           A1
-#define D6           A2
-#define D5           A3
-#define D4           A6
-#define D3           A7
-#define D2           A8
-#define D1           A9
-#define D0           A10
+#define REG          A0  // A0
+#define D7           A1  // A1
+#define D6           A2  // A2
+#define D5           A3  // A3
+#define D4           A6  // 4
+#define D3           A7  // 6
+#define D2           A8  // 8
+#define D1           A9  // 9
+#define D0           A10 // 10
 
 #define LED_REG      1 // TX
 #define LED_D7       0 // RX
@@ -56,6 +66,7 @@
 #define REPORT_OK_CARD       0x01
 #define REPORT_OK_STATE      0x02
 #define REPORT_OK_ROW        0x03
+#define REPORT_OK_ADC        0x04
 #define REPORT_ERR_LENGTH    0x81
 
 typedef enum 
@@ -101,11 +112,27 @@ void loop()
   // Generate filtered versions of registration and data
   byte freg = getData(adc[8], 0);  
   byte now  = getData(adc[7], 7) | getData(adc[6], 6) | getData(adc[5], 5) | getData(adc[4], 4)
-            | getData(adc[3], 3) | getData(adc[7], 2) | getData(adc[1], 1) | getData(adc[0], 0);
+            | getData(adc[3], 3) | getData(adc[2], 2) | getData(adc[1], 1) | getData(adc[0], 0);
 
   // Show live diagnostics on LEDs
   writeLEDs(freg, now);
 
+#if defined(CFGEN_SEND_ADC_REPORTS)
+  if (now != sticky)
+  {
+    Serial.write(':');
+    Serial.write(REPORT_OK_ADC);
+    for (int i=8; i>=0; i--)
+    {
+      //in decimal ADC values are 10 bits (3 nybbles)
+      Serial.print(adc[i]);
+      Serial.print(" ");
+    }
+    Serial.println();
+  }
+#endif
+
+  
   // crank round the acquisition state machine
   switch (state)
   {
@@ -240,7 +267,6 @@ byte readADCs(void)
 {
   // Read all 9 inputs (roughly) at same time
   adc[8] = analogRead(REG);
-  
   adc[7] = analogRead(D7);
   adc[6] = analogRead(D6);
   adc[5] = analogRead(D5);
