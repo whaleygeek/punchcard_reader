@@ -104,7 +104,7 @@ def readline():
       line_buffer = ""
       print(line)
       return line
-    
+
     else:
       line_buffer += data
 
@@ -120,8 +120,13 @@ def processSerial():
   result = getRec(line)
   if result != None:
     # There is a rec, process it
-    rectype, databuf = result
+    databuf = result
+    rectype = ord(databuf[0])
+    payload = databuf[1:]
+    print("rectype:" + str(rectype))
+
     if rectype == REPORT_OK_CARD:
+      print("CARD OK")
       buffer = decodeDataBuf(databuf)
     else:
       # Just display other rec types on diagnostics
@@ -147,18 +152,18 @@ def getRec(line):
   if line[0] != ':':
     return None # Not a start char
 
+  line = line[1:] # strip start char
+
   # read the type as hexascii, error if not hexascii
   # if boot record, read ascii data and exit
 
-  if (len(line)-1) % 2 != 0:
-    return None # non-even number of data chars
+  try:
+    data = line.decode('hex') # now binary
+  except:
+    print("non hex data:" + line)
+    return None
 
-  # read in runs of hexascii and decode into a byte buffer until EOL
-  # error if any are not hexascii
-
-  # return (recType, databuffer)
-
-  return None # TODO
+  return data # binary buffer
 
 
 def decodeDataBuf(buf):
