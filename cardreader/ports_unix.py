@@ -5,10 +5,9 @@
 
 # SYSTEM AND VERSION VARIANCE ==========================================
 
-#this is for linux
+#this is for linux and mac
 DEV_TTY    = "/dev/tty*"
 
-#TODO for mac, it's /dev/cua*???
   
   
 # BODY =================================================================
