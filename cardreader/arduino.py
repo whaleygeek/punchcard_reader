@@ -4,6 +4,7 @@
 #
 # Read card records from an arduino card reader.
 
+
 #----- CONFIGURATION -----------------------------------------------------------
 
 DEBUG                 = False
@@ -20,6 +21,8 @@ import serial
 
 
 #----- PORTSCAN ----------------------------------------------------------------
+
+import portscan
 
 name = portscan.getName()
 if name != None:
@@ -59,79 +62,53 @@ TEST_DATA1 = [
   "........"
 ]
 
-buffer = None
+rec_buffer  = None
+line_buffer = ""
 
 
 def isReady():
-  if buffer != None:
+  if rec_buffer != None:
     return True
   processSerial()
-  if buffer != None:
+  if rec_buffer != None:
     return True
   
   return False
 
 
 def read():
-  global buffer
+  global rec_buffer
   
   if not isReady():
     return None
 
-  rec = buffer
-  buffer = None
-  return buffer
-
-   
-# read data between minsize and maxsize chars.
-# optional terminator set to mark end of packet.
-# timeout if any one read takes longer than timeout period.
-# i.e. whole packet may take longer to come in
-
-def read(self, maxsize=1, minsize=None, termset=None, timeout=None):
-  if minsize == None:
-    minsize = maxsize
-    
-  remaining = maxsize
-  if termset != None:
-    readsz = 1
-  else:
-    readsz = remaining
-
-  buf = ''
-
-  #TODO make this non-blocking
-  #or see if Serial has a non blocking poll mode for terminator,
-  #as that would be easier.
-  while len(buf) < minsize:
-    data = self.serial.read(readsz)
-    if (len(data) == 0):
-      time.sleep(0.1) # prevent CPU hogging
-    else:
-      #print("just read:" + data)
-      buf = buf + data
-      remaining -= len(data)
-      if termset != None:
-        if data[0] in termset:
-          break # terminator seen
-      
-  return buf
+  rec = rec_buffer
+  rec_buffer = None
+  return rec
 
 
-REPORT_OK_BOOT       0
-REPORT_OK_CARD       1
-REPORT_OK_STATE      2
-REPORT_OK_ROW        3
-REPORT_ERR_LENGTH    129
+def readline(termset):
+  global line_buffer
+
+  while True:
+    data = s.read(1)
+    if len(data) == 0:
+      return None # no new data has been received
+
+    if data[0] in termset:
+      line = line_buffer
+      line_buffer = ""
+      return line
+
+    line_buffer += data
+    print("buf:" + line_buffer)
 
 
 def processSerial():
   global buffer
-  buffer = TEST_DATA1 # Testing
 
   # Poll serial to see if there is a line of data waiting
-  line = None
-  #line = s.read(term='\n', timeout=0)
+  line = readline(termset="\\n")
   if line == None:
     return
 
@@ -143,8 +120,15 @@ def processSerial():
       buffer = decodeDataBuf(databuf)
     else:
       # Just display other rec types on diagnostics
-      print(str(rectype) + " " + str(databuf))
+      print("Unhandled rec:" + str(rectype) + " " + str(databuf))
 
+
+REPORT_OK_BOOT       = 0
+REPORT_OK_CARD       = 1
+REPORT_OK_STATE      = 2
+REPORT_OK_ROW        = 3
+REPORT_OK_ADC        = 4
+REPORT_ERR_LENGTH    = 129
 
 
 def getRec(line):
@@ -155,7 +139,7 @@ def getRec(line):
   # line terminated by a newline
   if len(line) < 3:
     return None # Too short, no start/type
-  if line[0] != ':'"
+  if line[0] != ':':
     return None # Not a start char
 
   # read the type as hexascii, error if not hexascii
@@ -170,6 +154,11 @@ def getRec(line):
   # return (recType, databuffer)
 
   return None # TODO
+
+
+def decodeDataBuf(buf):
+  return TEST_DATA1 # TODO
+
 
 
 # END
