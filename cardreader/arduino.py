@@ -9,6 +9,7 @@
 DEBUG                 = False
 USE_EMBEDDED_PYSERIAL = True
 BAUD                  = 115200
+ENABLE_ERROR_CORRECT  = False
 
 if USE_EMBEDDED_PYSERIAL:
   from os import sys, path
@@ -58,22 +59,82 @@ TEST_DATA1 = [
   "........"
 ]
 
+buffer = None
+
+
 def isReady():
-  #TODO if there is a full record in the buffer, return True
-  #else see if any serial data waiting to be processed
-  #if there is, process it until none left, or something to return
-  #if there is a ful record in the buffer, return True
-  #else return False
-  return True
+  if buffer != None:
+    return True
+  processSerial()
+  if buffer != None:
+    return True
+  
+  return False
 
 
 def read():
-  #if not ready, return None
-  #else
-  #  retrieve one record from the internal buffer, delete it
-  #  return that record
-  return TEST_DATA1
+  global buffer
+  
+  if not isReady():
+    return None
 
+  rec = buffer
+  buffer = None
+  return buffer
+
+
+REPORT_OK_BOOT       0
+REPORT_OK_CARD       1
+REPORT_OK_STATE      2
+REPORT_OK_ROW        3
+REPORT_ERR_LENGTH    129
+
+
+def processSerial():
+  global buffer
+  buffer = TEST_DATA1 # Testing
+
+  # Poll serial to see if there is a line of data waiting
+  line = None
+  #line = s.read(term='\n', timeout=0)
+  if line == None:
+    return
+
+  result = getRec(line)
+  if result != None:
+    # There is a rec, process it
+    rectype, databuf = result
+    if rectype == REPORT_OK_CARD:
+      buffer = decodeDataBuf(databuf)
+    else:
+      # Just display other rec types on diagnostics
+      print(str(rectype) + " " + str(databuf))
+
+
+
+def getRec(line):
+  # :ttnnnnnn\n
+  # i.e. start char is :
+  # first two chars are hexascii type
+  # next pairs of chars are data
+  # line terminated by a newline
+  if len(line) < 3:
+    return None # Too short, no start/type
+  if line[0] != ':'"
+    return None # Not a start char
+
+  # read the type as hexascii, error if not hexascii
+  # if boot record, read ascii data and exit
+
+  if (len(line)-1) % 2 != 0:
+    return None # non-even number of data chars
+
+  # read in runs of hexascii and decode into a byte buffer until EOL
+  # error if any are not hexascii
+
+  # return (recType, databuffer)
+
+  return None # TODO
 
 
 # END
