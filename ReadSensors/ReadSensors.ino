@@ -21,7 +21,7 @@
 //#define CFGEN_SEND_STATE_REPORTS
 
 //Turn this on to send row data reports every detected row
-//#define CFGEN_SEND_ROW_REPORTS
+#define CFGEN_SEND_ROW_REPORTS
 
 
 #define NUM_CHANNELS 9
@@ -225,7 +225,7 @@ void loop()
   
   if (state != prev)
   {
-    state = prev;
+    prev = state;
 #if defined(CFGEN_SEND_STATE_REPORTS)
     {
       byte report = (byte) (state & 0xFF);
