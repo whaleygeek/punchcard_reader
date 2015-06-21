@@ -87,28 +87,33 @@ def read():
   return rec
 
 
-def readline(termset):
+def readline():
   global line_buffer
 
   while True:
     data = s.read(1)
     if len(data) == 0:
       return None # no new data has been received
+    data = data[0]
 
-    if data[0] in termset:
+    if data == '\n':
+      pass # strip newline
+
+    elif data[0] == '\r':
       line = line_buffer
       line_buffer = ""
+      print(line)
       return line
-
-    line_buffer += data
-    print("buf:" + line_buffer)
+    
+    else:
+      line_buffer += data
 
 
 def processSerial():
   global buffer
 
   # Poll serial to see if there is a line of data waiting
-  line = readline(termset="\\n")
+  line = readline()
   if line == None:
     return
 
