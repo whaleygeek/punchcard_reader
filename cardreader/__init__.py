@@ -1,8 +1,8 @@
 # Use this when testing without hardware
-from tester import *
+#from tester import *
 
 # Use this with the real hardware
-#from arduino import *
+from arduino import *
 
 
 

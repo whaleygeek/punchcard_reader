@@ -51,16 +51,16 @@ s.port = PORT
 s.open()
 
 
-TEST_DATA1 = [
-  "..XXX...",
-  ".XX.XX..",
-  "XXXXXXX.",
-  "....XXX.",
-  "XXXXXXX.",
-  ".XXXXX..",
-  "..XXX...",
-  "........"
-]
+#TEST_DATA1 = [
+#  "..XXX...",
+#  ".XX.XX..",
+#  "XXXXXXX.",
+#  "....XXX.",
+#  "XXXXXXX.",
+#  ".XXXXX..",
+#  "..XXX...",
+#  "........"
+#]
 
 rec_buffer  = None
 line_buffer = ""
@@ -127,7 +127,9 @@ def processSerial():
 
     if rectype == REPORT_OK_CARD:
       print("CARD OK")
-      buffer = decodeDataBuf(databuf)
+      buffer = decodeDataBuf(payload)
+      if buffer != None:
+        printCard(buffer)
     else:
       # Just display other rec types on diagnostics
       print("Unhandled rec:" + str(rectype) + " " + str(databuf))
@@ -167,8 +169,27 @@ def getRec(line):
 
 
 def decodeDataBuf(buf):
-  return TEST_DATA1 # TODO
+  card = []
+  for b in buf:
+    byte = ord(b)
+    # each byte in buffer is a row
+    row = ""
+    # each bit in b is a column in that row, D7..D0
+    mult = 0x80
+    for bitno in range(8):
+      bit = ((byte & mult) != 0)
+      if bit:
+        row += 'X'
+      else:
+        row += '.'
+      mult = mult >> 1
+    card.append(row)
+
+  return card
 
 
+def printCard(card):
+  for row in card:
+    print(row)
 
 # END
