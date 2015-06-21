@@ -2,32 +2,30 @@
 //
 // (c) 2015 D.J.Whale
 
-//punching
-//punch data in the 8 columns
-//if you want an empty row, punch the REG hole
-//don't punch all 8+reg else it will see a card removal
+// punching
+// punch data in the 8 columns
+// if you want an empty row, punch the REG hole
+// don't punch all 8+REG else it will see a card removal
 
-//TODO error correcting mode
-//when seen 8, we have the IN phase
-//repeat for another 8, this is the OUT phase
-//now have 16 bytes in memory
-//if IN and OUT are same (but reversed), accept card, dump 8 hexascii
-//if different, see if there are any single bit errors we might resolve
-//e.g. if IN saw a hole and OUT did not, might assume we missed a hole
-//might just be able to do this by ORing each line together
+// The ADC is 10 bit (0..1023)
+// The photo transistors conduct when they detect IR
+// So a HOLE will make the transistor conduct, current will flow, and
+// the voltage at the ADC will drop, giving a value lower than this reading.
+// When no card is present, all photo transistors will conduct and draw current.
+// <  200 = HOLE  = 1
+// >= 200 = PAPER = 0
 
-//TODO response protocol
-// return data is in hexascii
-// 00 - power up status/version etc
-// 01 - valid card, 8 bytes follow
-// 02 - error corrected card, 8 bytes follow
-// 81 - card length error (not 16 clocks)
-// 82 - card data error (significantly different IN and OUT
-//bits numbered from left, so D7 is on left next to REG hole
+#define CFG_SENSOR_THRESHOLD 200
+
+//Turn this on to turn a state change report every state change
+//#define CFGEN_SEND_STATE_REPORTS
+
+//Turn this on to send row data reports every detected row
+//#define CFGEN_SEND_ROW_REPORTS
 
 
-#define REGISTRATION A0
-
+#define NUM_CHANNELS 9
+#define REG          A0
 #define D7           A1
 #define D6           A2
 #define D5           A3
@@ -47,7 +45,37 @@
 #define LED_D1       14
 #define LED_D0       15
 
-#define CARD_ROWS 8
+// Set to 8, will only read IN phase
+// Set to 16, will read and collect OUT phase also
+// Must see all CARD_ROWS rows to get a OK report
+// if less rows read, will get an error, but data still included
+// This allows host to compare IN and OUT phases and error correct
+#define CARD_ROWS    16
+
+#define REPORT_OK_BOOT       0x00
+#define REPORT_OK_CARD       0x01
+#define REPORT_OK_STATE      0x02
+#define REPORT_OK_ROW        0x03
+#define REPORT_ERR_LENGTH    0x81
+
+typedef enum 
+{
+  STATE_NOCARD = 0,
+  STATE_INSERTING,
+  STATE_WAITING_ROW,
+  STATE_IN_ROW,
+  STATE_GAP,
+  STATE_REMOVING,
+  STATE_END
+} STATE;
+
+byte sticky = 0;
+boolean seenReg = false;
+byte row = 0;
+byte card[CARD_ROWS];
+unsigned int adc[NUM_CHANNELS];
+STATE state = STATE_NOCARD;
+STATE prev = STATE_NOCARD;
 
 
 void setup()
@@ -62,45 +90,18 @@ void setup()
   pinMode(LED_D2,  OUTPUT);
   pinMode(LED_D1,  OUTPUT);
   pinMode(LED_D0,  OUTPUT);
-  
+  sendCardReport(REPORT_OK_BOOT, NULL, 0);
 }
 
-byte sticky = 0;
-boolean seenReg = false;
-byte row = 0;
-byte card[CARD_ROWS];
-
-typedef enum 
-{
-  STATE_REMOVED = 0,
-  STATE_INSERTING,
-  STATE_WAITING_ROW,
-  STATE_IN_ROW,
-  STATE_GAP,
-  STATE_END
-} STATE;
-
-STATE state = STATE_REMOVED;
 
 void loop()
 {  
-  // Read all 9 inputs (roughly) at same time
-  unsigned int reg = analogRead(A0);
-
-  unsigned int d7  = analogRead(D7);
-  unsigned int d6  = analogRead(D6);
-  unsigned int d5  = analogRead(D5);
-  unsigned int d4  = analogRead(D4);
-  unsigned int d3  = analogRead(D3);
-  unsigned int d2  = analogRead(D2);
-  unsigned int d1  = analogRead(D1);
-  unsigned int d0  = analogRead(D0);
+  readADCs();
   
-  // Generate filtered version, as a byte
-  byte freg = getData(reg, 0);
-  
-  byte now = getData(d7, 7) | getData(d6, 6) | getData(d5, 5) | getData(d4, 4)
-           | getData(d3, 3) | getData(d2, 2) | getData(d1, 1) | getData(d0, 0);
+  // Generate filtered versions of registration and data
+  byte freg = getData(adc[8], 0);  
+  byte now  = getData(adc[7], 7) | getData(adc[6], 6) | getData(adc[5], 5) | getData(adc[4], 4)
+            | getData(adc[3], 3) | getData(adc[7], 2) | getData(adc[1], 1) | getData(adc[0], 0);
 
   // Show live diagnostics on LEDs
   writeLEDs(freg, now);
@@ -108,7 +109,7 @@ void loop()
   // crank round the acquisition state machine
   switch (state)
   {
-    case STATE_REMOVED:
+    case STATE_NOCARD:
       // stay here while freg=1 and data=0xFF, all holes (card removed)
       if ((freg != 1) || now != 0xFF)
       { // at least one sensor has seen paper
@@ -122,7 +123,7 @@ void loop()
       if ((freg == 1) && (now == 0xFF))
       {
         // bail early if all on (removed)
-        state = STATE_REMOVED;
+        state = STATE_REMOVING;
         //Serial.println(state);
       }
       // wait for all paper
@@ -138,7 +139,7 @@ void loop()
       // check for early card removal (all reading holes)
       if ((freg == 1) && (now == 0xFF))
       {
-        state = STATE_REMOVED;
+        state = STATE_REMOVING;
         //Serial.println(state);
       }
       else
@@ -156,7 +157,7 @@ void loop()
       // check for early card removal (all holes)
       if ((freg == 1) && (now == 0xFF))
       {
-        state = STATE_REMOVED;
+        state = STATE_REMOVING;
         //Serial.println(state);
       }
       else
@@ -179,12 +180,15 @@ void loop()
     break;
     
     case STATE_GAP:
-      //Serial.print("row:");
-      //Serial.print(row);
-      //Serial.print("=");
-      //Serial.println(sticky);
-      
-      //store row data in card buffer
+#if defined(CFGEN_SEND_ROW_REPORTS)
+      {
+         byte report[2];
+         report[0] = row;
+         report[1] = sticky;
+         sendCardReport(REPORT_OK_ROW, report, sizeof(report));
+      }
+#endif      
+      // store row data in card buffer
       card[row] = sticky;
       // advance row
       row += 1;
@@ -203,23 +207,57 @@ void loop()
     
     case STATE_END:
       // wait here until card removal
-      //Note, later version will read on way out again, and complare in and out readings
+      // Note, later version will read on way out again, and complare in and out readings
       if ((freg == 1) && (now == 0xFF))
       {
-        sendCard(card, CARD_ROWS);
-        state = STATE_REMOVED;
+        sendCardReport(REPORT_OK_CARD, card, CARD_ROWS);
+        state = STATE_NOCARD;
         //Serial.println(state);
       }
     break;
+    
+    case STATE_REMOVING:
+      // only report the rows that were read
+      sendCardReport(REPORT_ERR_LENGTH, card, row);
+      state = STATE_NOCARD;
+    break;
   }  
+  
+  if (state != prev)
+  {
+    state = prev;
+#if defined(CFGEN_SEND_STATE_REPORTS)
+    {
+      byte report = (byte) (state & 0xFF);
+      sendCardReport(REPORT_OK_STATE, &report, 1);
+    }
+#endif
+  }
+}
+
+
+byte readADCs(void)
+{
+  // Read all 9 inputs (roughly) at same time
+  adc[8] = analogRead(REG);
+  
+  adc[7] = analogRead(D7);
+  adc[6] = analogRead(D6);
+  adc[5] = analogRead(D5);
+  adc[4] = analogRead(D4);
+  adc[3] = analogRead(D3);
+  adc[2] = analogRead(D2);
+  adc[1] = analogRead(D1);
+  adc[0] = analogRead(D0);
 }
 
 
 byte getData(unsigned int adc, byte bitno)
 {
-  if (adc < 200) return (1<<bitno);
+  if (adc < CFG_SENSOR_THRESHOLD) return (1<<bitno);
   return 0;
 }
+
 
 void writeLEDs(byte reg, byte data)
 {
@@ -235,15 +273,41 @@ void writeLEDs(byte reg, byte data)
   digitalWrite(LED_D0,  data&(1<<0));
 }
 
-void sendCard(byte* pData, byte len)
+
+void sendCardReport(byte type, byte* pData, byte len)
 {
+  Serial.write(":"); // Start char
+  sendHexByte(type); // mandatory type
+  
+  // Show optional data of any length
   for (byte i=0; i<len; i++)
   {
-    Serial.print(pData[i]);
-    Serial.print(" ");
+    sendHexByte(pData[i]);
   }
-  Serial.println();
+  Serial.println(); // End char
 }
 
+
+void sendHexByte(byte val)
+{
+  Serial.write(tohexch(val>>4)); // high nybble
+  Serial.write(tohexch(val));    // low nybble
+}
+
+
+char tohexch(byte val)
+{
+  val = val & 0x0F;
+  if (val > 9)
+  {
+    return 'A' + (val-10);
+  }
+  else
+  {
+    return '0' + val;
+  }
+}
+
+/* END OF FILE */
 
 
