@@ -12,7 +12,7 @@ The Python code runs on Raspberry Pi, PC or Mac.
 For a good write-up of what this project does and some really nice
 photos of it in use, please see Gemma Latham's blog post here:
 
-[Gemma's blog] (http://gemmamaylatham.co.uk/post/123551650183/patterncraft-launched-at-liverpool-makefest-june)
+[Gemma's blog] (http://www.gemmamaylatham.co.uk/portfolio-item/patterncraft/)
 
 For those of you following along with this project live, you can build
 your own PunchCard reader from the materials on this website and by
