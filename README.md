@@ -40,6 +40,14 @@ IR Transmitter LED:
 
 [OSRAM SFH484-2] (http://uk.farnell.com/webapp/wcs/stores/servlet/ProductDisplay?catalogId=15001&langId=44&urlRequestType=Base&partNumber=1212737&storeId=10151)
 
+(Note, this is now being obsoleted, use this replacement part)
+
+[OSRAM-SFG4550] (http://uk.farnell.com/osram/sfh4550/led-ir-5mm-850nm/dp/1573495)
+
+This replacement part is 850nm compared to the phototransistor which is 880nm,
+but the spectrum overlaps enough and the two devices are only a couple of
+milimeters apart, so it still works fine.
+
 IR receiver Phototransistor:
 
 [Fairchild QSD123] (http://uk.farnell.com/webapp/wcs/stores/servlet/ProductDisplay?catalogId=15001&langId=44&urlRequestType=Base&partNumber=2453252&storeId=10151)
@@ -57,7 +65,24 @@ the electronics chapter in the book: Adventures in Minecraft. The firmware
 in the ProMicro is loaded with the firmware of this project, but it
 basically works using the same techniques.
 
+Work In Progress
+====
+
+The OneBitReader code runs on the ProMicro, and uses a new simplified
+digital reading scheme - because the photo transistor swings between
+100mV and 3V with the chosen 1K resistor, this is easily above and below
+the digital pin threshold, and works fine. This also means we can use
+it on arduino's that don't have a full 9 ADCs to use.
+
+I will eventually merge the two bits of code into one file, and
+make the number of channels configurable, along with a software
+crossbar that will allow you to map any pin to any bit position
+(thus making it easier to lay out a PCB without lots of via's)
+
 David Whale
 @whaleygeek
 June 2015
+
+Updated May 2016
+
 
