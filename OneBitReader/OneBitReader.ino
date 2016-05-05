@@ -2,9 +2,6 @@
 // based on ReadSensors.ino  20/06/2015  D.J.Whale
 // (c) 2015, 2016 D.J.Whale
 
-//Turn on to send a raw ADC value report every time it changes
-//#define CFGEN_SEND_ADC_REPORTS
-
 //Turn this on to turn a state change report every state change
 //#define CFGEN_SEND_STATE_REPORTS
 
@@ -14,7 +11,13 @@
 // Pinouts for Sparkfun ProMicro:
 // https://learn.sparkfun.com/tutorials/pro-micro--fio-v3-hookup-guide/hardware-overview-pro-micro
 
-#define NUM_CHANNELS 9
+//GPIO reads low for hole
+#define HOLE 0
+//GPIO reads high for paper
+#define PAPER 1
+
+
+//#define NUM_CHANNELS 9
 #define REG          2  
 #define D7           3 
 //#define D6           A2  // A2
@@ -36,11 +39,11 @@
 //#define LED_D0       15
 
 //fudged for 1 bit reader (bit 7 only)
-#define ALL_PAPER  0x80 // high for paper
-#define ALL_HOLES  0x00 // low for hole
+#define ALL_PAPER  (PAPER*0xFF)
+#define ALL_HOLES  (HOLE *0xFF)
 
-#define REG_PAPER 1 // high for paper 
-#define REG_HOLE  0 // low for hole
+#define REG_PAPER PAPER 
+#define REG_HOLE  HOLE
 
 // Set to 8, will only read IN phase
 // Set to 16, will read and collect OUT phase also
@@ -58,13 +61,13 @@
 
 typedef enum 
 {
-  STATE_NOCARD = 0,
-  STATE_INSERTING,
-  STATE_WAITING_ROW,
-  STATE_IN_ROW,
-  STATE_GAP,
-  STATE_REMOVING,
-  STATE_END
+  STATE_NOCARD        = 0,
+  STATE_INSERTING,    //1
+  STATE_WAITING_ROW,  //2
+  STATE_IN_ROW,       //3
+  STATE_GAP,          //4
+  STATE_REMOVING,     //5
+  STATE_END           //6
 } STATE;
 
 byte sticky = 0;
@@ -102,46 +105,24 @@ void setup()
   sendCardReport(REPORT_OK_BOOT, NULL, 0);
 }
 
-byte freg;
-byte now;
-
 void loop()
 {  
   //readPins
-  freg = (digitalRead(REG) ? REG_PAPER : REG_HOLE);
-  now  = (digitalRead(D7)  ? ALL_PAPER : ALL_HOLES);
+  byte freg = (digitalRead(REG) ? REG_PAPER : REG_HOLE);
+  byte now  = (digitalRead(D7)  ? ALL_PAPER : ALL_HOLES);
 
   // Show live diagnostics on LEDs
   writeLEDs(freg, now);
-}
 
-void stuff()
-{
-#if defined(CFGEN_SEND_ADC_REPORTS)
-  if (now != sticky)
-  {
-    Serial.write(':');
-    Serial.write(REPORT_OK_ADC);
-    for (int i=8; i>=0; i--)
-    {
-      //in decimal ADC values are 10 bits (3 nybbles)
-      Serial.print(adc[i]);
-      Serial.print(" ");
-    }
-    Serial.println();
-  }
-#endif
 
-  
   // crank round the acquisition state machine
   switch (state)
   {
     case STATE_NOCARD:
       // stay here while freg=hole and data=all holes (card removed)
-      if ((freg == REG_HOLE) || now == ALL_HOLES)
+      if ((freg == REG_PAPER) || now != ALL_HOLES)
       { // at least one sensor has seen paper
         state = STATE_INSERTING;
-        //Serial.println(state);
       } 
     break;
     
@@ -151,14 +132,12 @@ void stuff()
       {
         // bail early if all on (removed)
         state = STATE_REMOVING;
-        //Serial.println(state);
       }
       // wait for all paper
       else if ((freg == REG_PAPER) && (now == ALL_PAPER))
       {
         row = 0;
         state = STATE_WAITING_ROW;
-        //Serial.println(state);
       }
     break;
     
@@ -167,15 +146,13 @@ void stuff()
       if ((freg == REG_HOLE) && (now == ALL_HOLES))
       {
         state = STATE_REMOVING;
-        //Serial.println(state);
       }
       else
       { // wait for any data to start appearing (at least one hole)
         if ((freg == REG_HOLE) || (now != ALL_PAPER))
         {
-          sticky  = now;
+          sticky  = ~now; // 0=>hole, so we want to set bits for holes
           state   = STATE_IN_ROW;
-          //Serial.println(state);
         }
       }
     break;
@@ -185,7 +162,6 @@ void stuff()
       if ((freg == REG_HOLE) && (now == ALL_HOLES))
       {
         state = STATE_REMOVING;
-        //Serial.println(state);
       }
       else
       {
@@ -197,11 +173,10 @@ void stuff()
           seenReg = true;
         }
         // keep collecting sticky bits until all go zero again
-        sticky |= now;
+        sticky |= ~now; // 0=>hole, so we want to collect 1's for holes
         if ((freg == REG_PAPER) && (now == ALL_PAPER))
         {
           state = STATE_GAP;
-          //Serial.println(state);
         }  
       }
     break;
@@ -223,12 +198,10 @@ void stuff()
       if (row == CARD_ROWS)
       {
         state = STATE_END;
-        //Serial.println(state);
       }
       else
       {
         state = STATE_WAITING_ROW;
-        //Serial.println(state);
       }
     break;
     
@@ -239,7 +212,6 @@ void stuff()
       {
         sendCardReport(REPORT_OK_CARD, card, CARD_ROWS);
         state = STATE_NOCARD;
-        //Serial.println(state);
       }
     break;
     
