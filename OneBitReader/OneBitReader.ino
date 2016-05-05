@@ -2,20 +2,24 @@
 // based on ReadSensors.ino  20/06/2015  D.J.Whale
 // (c) 2015, 2016 D.J.Whale
 
+#include <avr/pgmspace.h>
+
+
+//===== CONFIGURATION ============================================================================
+
 //Turn this on to turn a state change report every state change
 //#define CFGEN_SEND_STATE_REPORTS
 
 //Turn this on to send row data reports every detected row
 //#define CFGEN_SEND_ROW_REPORTS
 
-// Pinouts for Sparkfun ProMicro:
-// https://learn.sparkfun.com/tutorials/pro-micro--fio-v3-hookup-guide/hardware-overview-pro-micro
-
 //GPIO reads low for hole
 #define HOLE 0
 //GPIO reads high for paper
 #define PAPER 1
 
+// Pinouts for Sparkfun ProMicro:
+// https://learn.sparkfun.com/tutorials/pro-micro--fio-v3-hookup-guide/hardware-overview-pro-micro
 
 //#define NUM_CHANNELS 9
 #define REG          2  
@@ -38,7 +42,14 @@
 //#define LED_D1       14
 //#define LED_D0       15
 
-//fudged for 1 bit reader (bit 7 only)
+// map any input bit to any output bit position
+// useful for retracking PCB's to avoid vias
+//                   xin:       b7    b6    b5    b4    b3    b2    b1    b0
+static const byte PROGMEM xout[8] = {1<<7, 1<<6, 1<<5, 1<<4, 1<<3, 1<<2, 1<<1, 1<<0};
+
+
+//===== CONSTANTS ===================================================================
+
 #define ALL_PAPER  (PAPER*0xFF)
 #define ALL_HOLES  (HOLE *0xFF)
 
@@ -70,14 +81,17 @@ typedef enum
   STATE_END           //6
 } STATE;
 
-byte sticky = 0;
-boolean seenReg = false;
-byte row = 0;
-byte card[CARD_ROWS];
-//unsigned int adc[NUM_CHANNELS];
-STATE state = STATE_NOCARD;
-STATE prev = STATE_NOCARD;
+//===== LOCAL DATA ===============================================================================
 
+static byte sticky = 0;
+static boolean seenReg = false;
+static byte row = 0;
+static byte card[CARD_ROWS];
+static STATE state = STATE_NOCARD;
+static STATE prev = STATE_NOCARD;
+
+
+//------------------------------------------------------------------------------------------------
 
 void setup()
 {
@@ -105,10 +119,15 @@ void setup()
   sendCardReport(REPORT_OK_BOOT, NULL, 0);
 }
 
+
+//------------------------------------------------------------------------------------------------
+
 void loop()
 {  
   //readPins
   byte freg = (digitalRead(REG) ? REG_PAPER : REG_HOLE);
+  //TODO: read from PORTB as a single byte
+  //TODO: run through crossbar if pins need remapping
   byte now  = (digitalRead(D7)  ? ALL_PAPER : ALL_HOLES);
 
   // Show live diagnostics on LEDs
@@ -235,11 +254,15 @@ void loop()
 }
 
 
+//------------------------------------------------------------------------------------------------
+// Show card data on feedback LEDs
 
 void writeLEDs(byte reg, byte data)
 {
-  // Show card data on feedback LEDs
   digitalWrite(LED_REG, reg?HIGH:LOW);
+
+  //TODO: Consider putting data LEDs on an 8 bit port to allow a single write
+  //TODO: Consider running through crossbar if pins need remapping
   digitalWrite(LED_D7,  (data&(1<<7))?HIGH:LOW);
   //digitalWrite(LED_D6,  data&(1<<6));
   //digitalWrite(LED_D5,  data&(1<<5));
@@ -250,6 +273,8 @@ void writeLEDs(byte reg, byte data)
   //digitalWrite(LED_D0,  data&(1<<0));
 }
 
+
+//------------------------------------------------------------------------------------------------
 
 void sendCardReport(byte type, byte* pData, byte len)
 {
@@ -265,12 +290,16 @@ void sendCardReport(byte type, byte* pData, byte len)
 }
 
 
+//------------------------------------------------------------------------------------------------
+
 void sendHexByte(byte val)
 {
   Serial.write(tohexch(val>>4)); // high nybble
   Serial.write(tohexch(val));    // low nybble
 }
 
+
+//------------------------------------------------------------------------------------------------
 
 char tohexch(byte val)
 {
@@ -285,6 +314,27 @@ char tohexch(byte val)
   }
 }
 
-/* END OF FILE */
+
+//------------------------------------------------------------------------------------------------
+
+byte crossbar(byte xin) //TODO pass in cross bar config to allow more than one?? pgmspace??
+{
+  byte result = 0;
+  byte mask = 0x80;
+ 
+  for (byte i=0; i<8; i++)
+  {
+    if (xin & mask)
+    {
+      result |= pgm_read_byte_near(xout+i);
+    }  
+    mask >>= 1;
+  }
+  return result;
+}
+
+
+
+/***** END OF FILE *****/
 
 
