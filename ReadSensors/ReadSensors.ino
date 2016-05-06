@@ -139,10 +139,9 @@ void loop()
 {  
   //readPins
   byte freg = (digitalRead(REG) ? REG_PAPER : REG_HOLE);
-  //TODO: read from PORTB as a single byte
-  //TODO: run through crossbar if pins need remapping
-  byte now  = (digitalRead(D7)  ? ALL_PAPER : ALL_HOLES);
-
+  //byte now  = (digitalRead(D7)  ? ALL_PAPER : ALL_HOLES);
+  byte now = crossbar(readdata());
+  
   // Show live diagnostics on LEDs
   writeLEDs(freg, now);
 
@@ -325,6 +324,24 @@ char tohexch(byte val)
   {
     return '0' + val;
   }
+}
+
+
+//------------------------------------------------------------------------------------------------
+// Read data from the data pins
+
+byte readdata(void)
+{
+  byte data = 0;
+  if (digitalRead(D7)) data |= 1<<7;
+  if (digitalRead(D6)) data |= 1<<6;
+  if (digitalRead(D5)) data |= 1<<5;
+  if (digitalRead(D4)) data |= 1<<4;
+  if (digitalRead(D3)) data |= 1<<3;
+  if (digitalRead(D2)) data |= 1<<2;
+  if (digitalRead(D1)) data |= 1<<1;
+  if (digitalRead(D0)) data |= 1<<0;
+  return data;
 }
 
 
