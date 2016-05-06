@@ -7,44 +7,39 @@
 // if you want an empty row, punch the REG hole
 // don't punch all 8+REG else it will see a card removal
 
+#include <avr/pgmspace.h>
 
-//TODO: add a record type that shows min/max values for zero's and ones on the last read
-//this will be helpful to be able to diagnose problems in the field.
-//min/max 1/0 for all 9 channels, in case of sensor misallignment.
 
-// The ADC is 10 bit (0..1023)
-// The photo transistors conduct when they detect IR
-// So a HOLE will make the transistor conduct, current will flow, and
-// the voltage at the ADC will drop, giving a value lower than this reading.
-// When no card is present, all photo transistors will conduct and draw current.
-// <  200 = HOLE  = 1
-// >= 200 = PAPER = 0
-
-#define CFG_SENSOR_THRESHOLD 512
-
-//Turn on to send a raw ADC value report every time it changes
-//#define CFGEN_SEND_ADC_REPORTS
+//===== CONFIGURATION ============================================================================
 
 //Turn this on to turn a state change report every state change
 //#define CFGEN_SEND_STATE_REPORTS
 
 //Turn this on to send row data reports every detected row
+//This is useful for continuous read strips
+//Although note you would have to disable 'max len exceeded' checks for this to work.
 //#define CFGEN_SEND_ROW_REPORTS
+
+//GPIO reads low for hole
+#define HOLE 0
+//GPIO reads high for paper
+#define PAPER 1
 
 // Pinouts for Sparkfun ProMicro:
 // https://learn.sparkfun.com/tutorials/pro-micro--fio-v3-hookup-guide/hardware-overview-pro-micro
 
-#define NUM_CHANNELS 9
-#define REG          A0  // A0
-#define D7           A1  // A1
-#define D6           A2  // A2
-#define D5           A3  // A3
-#define D4           A6  // 4
-#define D3           A7  // 6
-#define D2           A8  // 8
-#define D1           A9  // 9
-#define D0           A10 // 10
+// Note, this pin mapping is as per the original 9-analogues design that David and Gemma used in 2015
+#define REG          18  // 18 A0
+#define D7           19  // 19 A1
+#define D6           20  // 20 A2
+#define D5           21  // 21 A3
+#define D4            4  // 4  A6
+#define D3            6  // 6  A7
+#define D2            8  // 8  A8
+#define D1            9  // 9  A9
+#define D0           10  // 10 A10
 
+// Note, this pin mapping is as per the original 9-analogues design that David and Gemma used in 2015
 #define LED_REG      1 // TX
 #define LED_D7       0 // RX
 #define LED_D6       2
@@ -54,6 +49,25 @@
 #define LED_D2       16
 #define LED_D1       14
 #define LED_D0       15
+
+// map any input bit to any output bit position
+// useful for retracking PCB's to avoid vias
+
+// For 8 bit data reader
+//                   xin:       b7    b6    b5    b4    b3    b2    b1    b0
+//static const byte PROGMEM xout[8] = {1<<7, 1<<6, 1<<5, 1<<4, 1<<3, 1<<2, 1<<1, 1<<0};
+
+// For 1 bit data reader (make sure D7 (A1) maps to all bits so ALL_HOLES and ALL_SPACES work
+static const byte PROGMEM xout[8] = {0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+
+//===== CONSTANTS ===================================================================
+
+#define ALL_PAPER  (PAPER*0xFF)
+#define ALL_HOLES  (HOLE *0xFF)
+
+#define REG_PAPER PAPER 
+#define REG_HOLE  HOLE
 
 // Set to 8, will only read IN phase
 // Set to 16, will read and collect OUT phase also
@@ -71,137 +85,130 @@
 
 typedef enum 
 {
-  STATE_NOCARD = 0,
-  STATE_INSERTING,
-  STATE_WAITING_ROW,
-  STATE_IN_ROW,
-  STATE_GAP,
-  STATE_REMOVING,
-  STATE_END
+  STATE_NOCARD        = 0,
+  STATE_INSERTING,    //1
+  STATE_WAITING_ROW,  //2
+  STATE_IN_ROW,       //3
+  STATE_GAP,          //4
+  STATE_REMOVING,     //5
+  STATE_END           //6
 } STATE;
 
-byte sticky = 0;
-boolean seenReg = false;
-byte row = 0;
-byte card[CARD_ROWS];
-unsigned int adc[NUM_CHANNELS];
-STATE state = STATE_NOCARD;
-STATE prev = STATE_NOCARD;
+//===== LOCAL DATA ===============================================================================
 
+static byte sticky = 0;
+static boolean seenReg = false;
+static byte row = 0;
+static byte card[CARD_ROWS];
+static STATE state = STATE_NOCARD;
+static STATE prev = STATE_NOCARD;
+
+
+//------------------------------------------------------------------------------------------------
 
 void setup()
 {
   Serial.begin(115200);  
   pinMode(LED_REG, OUTPUT);
   pinMode(LED_D7,  OUTPUT);
-  pinMode(LED_D6,  OUTPUT);
-  pinMode(LED_D5,  OUTPUT);
-  pinMode(LED_D4,  OUTPUT);
-  pinMode(LED_D3,  OUTPUT);
-  pinMode(LED_D2,  OUTPUT);
-  pinMode(LED_D1,  OUTPUT);
-  pinMode(LED_D0,  OUTPUT);
+  pinMode(REG, INPUT);
+  pinMode(D7,  INPUT);
+  
+  digitalWrite(LED_REG, HIGH);
+  delay(1000);
+  digitalWrite(LED_REG, LOW);
+  
+  digitalWrite(LED_D7, HIGH);
+  delay(1000);
+  digitalWrite(LED_D7, LOW);
+  
+  //pinMode(LED_D6,  OUTPUT);
+  //pinMode(LED_D5,  OUTPUT);
+  //pinMode(LED_D4,  OUTPUT);
+  //pinMode(LED_D3,  OUTPUT);
+  //pinMode(LED_D2,  OUTPUT);
+  //pinMode(LED_D1,  OUTPUT);
+  //pinMode(LED_D0,  OUTPUT);
   sendCardReport(REPORT_OK_BOOT, NULL, 0);
 }
 
 
+//------------------------------------------------------------------------------------------------
+
 void loop()
 {  
-  readADCs();
-  
-  // Generate filtered versions of registration and data
-  byte freg = getData(adc[8], 0);  
-  byte now  = getData(adc[7], 7) | getData(adc[6], 6) | getData(adc[5], 5) | getData(adc[4], 4)
-            | getData(adc[3], 3) | getData(adc[2], 2) | getData(adc[1], 1) | getData(adc[0], 0);
+  //readPins
+  byte freg = (digitalRead(REG) ? REG_PAPER : REG_HOLE);
+  //TODO: read from PORTB as a single byte
+  //TODO: run through crossbar if pins need remapping
+  byte now  = (digitalRead(D7)  ? ALL_PAPER : ALL_HOLES);
 
   // Show live diagnostics on LEDs
   writeLEDs(freg, now);
 
-#if defined(CFGEN_SEND_ADC_REPORTS)
-  if (now != sticky)
-  {
-    Serial.write(':');
-    Serial.write(REPORT_OK_ADC);
-    for (int i=8; i>=0; i--)
-    {
-      //in decimal ADC values are 10 bits (3 nybbles)
-      Serial.print(adc[i]);
-      Serial.print(" ");
-    }
-    Serial.println();
-  }
-#endif
 
-  
   // crank round the acquisition state machine
   switch (state)
   {
     case STATE_NOCARD:
-      // stay here while freg=1 and data=0xFF, all holes (card removed)
-      if ((freg != 1) || now != 0xFF)
+      // stay here while freg=hole and data=all holes (card removed)
+      if ((freg == REG_PAPER) || now != ALL_HOLES)
       { // at least one sensor has seen paper
         state = STATE_INSERTING;
-        //Serial.println(state);
       } 
     break;
     
     case STATE_INSERTING:
       // check for early removal (all holes)
-      if ((freg == 1) && (now == 0xFF))
+      if ((freg == REG_HOLE) && (now == ALL_HOLES))
       {
         // bail early if all on (removed)
         state = STATE_REMOVING;
-        //Serial.println(state);
       }
       // wait for all paper
-      else if ((freg == 0) && (now == 0x00))
+      else if ((freg == REG_PAPER) && (now == ALL_PAPER))
       {
         row = 0;
         state = STATE_WAITING_ROW;
-        //Serial.println(state);
       }
     break;
     
     case STATE_WAITING_ROW:
       // check for early card removal (all reading holes)
-      if ((freg == 1) && (now == 0xFF))
+      if ((freg == REG_HOLE) && (now == ALL_HOLES))
       {
         state = STATE_REMOVING;
-        //Serial.println(state);
       }
       else
       { // wait for any data to start appearing (at least one hole)
-        if ((freg == 1) || (now != 0x00))
+        if ((freg == REG_HOLE) || (now != ALL_PAPER))
         {
-          sticky  = now;
+          sticky  = ~now; // 0=>hole, so we want to set bits for holes
           state   = STATE_IN_ROW;
-          //Serial.println(state);
         }
       }
     break;
     
     case STATE_IN_ROW:
       // check for early card removal (all holes)
-      if ((freg == 1) && (now == 0xFF))
+      if ((freg == REG_HOLE) && (now == ALL_HOLES))
       {
         state = STATE_REMOVING;
-        //Serial.println(state);
       }
       else
       {
         // remember if we see the registration hole while reading a row
         // this is only punched if the row is completely unpunched
         // that way we don't miss the row
-        if (freg == 1)
+        if (freg == REG_HOLE)
         {
           seenReg = true;
         }
         // keep collecting sticky bits until all go zero again
-        sticky |= now;
-        if ((freg == 0) && (now == 0x00))
+        sticky |= ~now; // 0=>hole, so we want to collect 1's for holes
+        if ((freg == REG_PAPER) && (now == ALL_PAPER))
         {
           state = STATE_GAP;
-          //Serial.println(state);
         }  
       }
     break;
@@ -223,23 +230,20 @@ void loop()
       if (row == CARD_ROWS)
       {
         state = STATE_END;
-        //Serial.println(state);
       }
       else
       {
         state = STATE_WAITING_ROW;
-        //Serial.println(state);
       }
     break;
     
     case STATE_END:
       // wait here until card removal
       // Note, later version will read on way out again, and complare in and out readings
-      if ((freg == 1) && (now == 0xFF))
+      if ((freg == REG_HOLE) && (now == ALL_HOLES))
       {
         sendCardReport(REPORT_OK_CARD, card, CARD_ROWS);
         state = STATE_NOCARD;
-        //Serial.println(state);
       }
     break;
     
@@ -263,42 +267,27 @@ void loop()
 }
 
 
-byte readADCs(void)
-{
-  // Read all 9 inputs (roughly) at same time
-  adc[8] = analogRead(REG);
-  adc[7] = analogRead(D7);
-  adc[6] = analogRead(D6);
-  adc[5] = analogRead(D5);
-  adc[4] = analogRead(D4);
-  adc[3] = analogRead(D3);
-  adc[2] = analogRead(D2);
-  adc[1] = analogRead(D1);
-  adc[0] = analogRead(D0);
-}
-
-
-byte getData(unsigned int adc, byte bitno)
-{
-  if (adc < CFG_SENSOR_THRESHOLD) return (1<<bitno);
-  return 0;
-}
-
+//------------------------------------------------------------------------------------------------
+// Show card data on feedback LEDs
 
 void writeLEDs(byte reg, byte data)
 {
-  // Show card data on feedback LEDs
-  digitalWrite(LED_REG, reg);
-  digitalWrite(LED_D7,  data&(1<<7));
-  digitalWrite(LED_D6,  data&(1<<6));
-  digitalWrite(LED_D5,  data&(1<<5));
-  digitalWrite(LED_D4,  data&(1<<4));
-  digitalWrite(LED_D3,  data&(1<<3));
-  digitalWrite(LED_D2,  data&(1<<2));
-  digitalWrite(LED_D1,  data&(1<<1));
-  digitalWrite(LED_D0,  data&(1<<0));
+  digitalWrite(LED_REG, reg?HIGH:LOW);
+
+  //TODO: Consider putting data LEDs on an 8 bit port to allow a single write
+  //TODO: Consider running through crossbar if pins need remapping
+  digitalWrite(LED_D7,  (data&(1<<7))?HIGH:LOW);
+  //digitalWrite(LED_D6,  data&(1<<6));
+  //digitalWrite(LED_D5,  data&(1<<5));
+  //digitalWrite(LED_D4,  data&(1<<4));
+  //digitalWrite(LED_D3,  data&(1<<3));
+  //digitalWrite(LED_D2,  data&(1<<2));
+  //digitalWrite(LED_D1,  data&(1<<1));
+  //digitalWrite(LED_D0,  data&(1<<0));
 }
 
+
+//------------------------------------------------------------------------------------------------
 
 void sendCardReport(byte type, byte* pData, byte len)
 {
@@ -314,12 +303,16 @@ void sendCardReport(byte type, byte* pData, byte len)
 }
 
 
+//------------------------------------------------------------------------------------------------
+
 void sendHexByte(byte val)
 {
   Serial.write(tohexch(val>>4)); // high nybble
   Serial.write(tohexch(val));    // low nybble
 }
 
+
+//------------------------------------------------------------------------------------------------
 
 char tohexch(byte val)
 {
@@ -334,6 +327,27 @@ char tohexch(byte val)
   }
 }
 
-/* END OF FILE */
+
+//------------------------------------------------------------------------------------------------
+
+byte crossbar(byte xin) //TODO pass in cross bar config to allow more than one?? pgmspace??
+{
+  byte result = 0;
+  byte mask = 0x80;
+ 
+  for (byte i=0; i<8; i++)
+  {
+    if (xin & mask)
+    {
+      result |= pgm_read_byte_near(xout+i);
+    }  
+    mask >>= 1;
+  }
+  return result;
+}
+
+
+
+/***** END OF FILE *****/
 
 
