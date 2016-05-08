@@ -1,0 +1,26 @@
+# /bin/bash
+AVR="/Applications/Adafruit Arduino 1.0.5.app/Contents/Resources/Java/hardware/tools/avr"
+AVRDUDE="$AVR/bin/avrdude"
+AVRCONF="$AVR/etc/avrdude.conf"
+
+# Default clock (slowly rising power; long delay to clock; 8 MHz internal)
+# Int. RC Osc. 8 MHz; Start-up time PWRDWN/RESET: 6 CK/14 CK + 64 ms; 
+# [CKSEL=0010 SUT=10]; default value
+# Brown-out detection disabled; [BODLEVEL=111]
+# Preserve EEPROM memory through the Chip Erase cycle; [EESAVE=0]
+
+LFUSE=0xE2
+HFUSE=0xD7
+EFUSE=0xFF
+
+#echo try this
+#echo $AVRDUDE
+#echo $AVRCONF
+#echo $LFUSE
+#echo $HFUSE
+#echo $EFUSE
+
+echo Writing fuses...
+"$AVRDUDE" -C"$AVRCONF" -pattiny85 -cstk500v1 -P/dev/tty.usbmodem1411 -b19200 -U lfuse:w:${LFUSE}:m -U hfuse:w:${HFUSE}:m -U efuse:w:${EFUSE}:m
+echo Done
+
