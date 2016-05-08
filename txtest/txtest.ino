@@ -6,7 +6,7 @@
 #define LED_GREEN 0  // PB0, pin 5
 #define TX 1         // PB1, pin 6
 
-#define HALF_BIT_TIME 5 //ms
+#define BIT_TIME 10 //ms
 
 void setup()
 {
@@ -32,27 +32,29 @@ void loop()
   
   // Transmit a single byte using USI
   // Transmit start bit (low)
-  USIDR = 0x00; // high bit zero
+  //TODO could shift out two bits, for 1 bit of pad, to simplify timing/shifting
+  USIDR = 0x00; // high bit zero, pin changes low immediately
   // clock out start bit
-  delay(HALF_BIT_TIME*2);
+  delay(BIT_TIME);
   
   // Clock out 8 data bits
-  USIDR = 0xAA;
   // use counter, so that later we can use timer counter hardware for accurate timing
-  USISR = B00001000; // overflow interrupt disabled, clock preloaded with 8 (+8=overflow)
-  //do
-  for (i=0; i<8; i++)
+  USISR = B00001000; // overflow interrupt cleared, clock preloaded with 8 (+8=overflow)
+  USIDR = 0xAA;
+
+  do
+  //for (i=0; i<8; i++)
   {  
-    delay(HALF_BIT_TIME);
-    USICR |= B00000010; //USICLK;
-    delay(HALF_BIT_TIME);
-    USICR &= ~ B00000010; //USICLK;
+    delay(BIT_TIME);
+    USICR |= B00000010; //1<<USICLK; // shift happens here
+    USICR &= ~ B00000010; //1<<USICLK; 
   }
-  //while ((USICR & B01000000) == 0);
+  //while ((USISR & B01000000) == 0); // 1<<USIOIF
+  while ((USISR & 0x0F) != 0);
   
   // Clock out stop bit (high)
-  USIDR = 0x80;
-  delay(HALF_BIT_TIME*2);
+  USIDR = 0x80; // high bit one, pin changes immediately
+  delay(BIT_TIME);
   
   digitalWrite(LED_GREEN, LOW);
   delay(100);
