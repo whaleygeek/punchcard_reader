@@ -7,23 +7,27 @@
 // if you want an empty row, punch the REG hole
 // don't punch all 8+REG else it will see a card removal
 
+
+#if defined(__AVR_ATtiny85__)
 #include <avr/pgmspace.h>
 
+#define TX 1         // pin 6
+#define RX 3         // not used, pin 2
+#define BAUD 9600
 
-//===== CONFIGURATION ============================================================================
+#define REG      3   // pin 2
+#define D7       4   // pin 3
 
-//Turn this on to turn a state change report every state change
-//#define CFGEN_SEND_STATE_REPORTS
+#define LED_REG  2   // pin 7
+#define LED_D7   0   // pin 5
+#endif
 
-//Turn this on to send row data reports every detected row
-//This is useful for continuous read strips
-//Although note you would have to disable 'max len exceeded' checks for this to work.
-//#define CFGEN_SEND_ROW_REPORTS
+#if defined(__AVR_ATmega328P__)
+#error Not yet ported to ATMega328P
+#endif
 
-//GPIO reads low for hole
-#define HOLE 0
-//GPIO reads high for paper
-#define PAPER 1
+#if defined(__AVR_ATmega32U4__)
+#define BAUD 115200
 
 // Pinouts for Sparkfun ProMicro:
 // https://learn.sparkfun.com/tutorials/pro-micro--fio-v3-hookup-guide/hardware-overview-pro-micro
@@ -49,6 +53,25 @@
 #define LED_D2       16
 #define LED_D1       14
 #define LED_D0       15
+#endif
+
+
+//===== CONFIGURATION ============================================================================
+
+//Turn this on to turn a state change report every state change
+//#define CFGEN_SEND_STATE_REPORTS
+
+//Turn this on to send row data reports every detected row
+//This is useful for continuous read strips
+//Although note you would have to disable 'max len exceeded' checks for this to work.
+//#define CFGEN_SEND_ROW_REPORTS
+
+//GPIO reads low for hole
+#define HOLE 0
+//GPIO reads high for paper
+#define PAPER 1
+
+
 
 // map any input bit to any output bit position
 // useful for retracking PCB's to avoid vias
@@ -59,6 +82,15 @@
 
 // For 1 bit data reader (make sure D7 (A1) maps to all bits so ALL_HOLES and ALL_SPACES work
 static const byte PROGMEM xout[8] = {0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+
+#if defined(__AVR_ATtiny85__)
+#include <SoftwareSerial.h>
+SoftwareSerial serport(RX, TX);
+#endif
+
+#if defined(__AVR_ATmega32U4__)
+#define serport Serial
+#endif
 
 
 //===== CONSTANTS ===================================================================
@@ -108,20 +140,11 @@ static STATE prev = STATE_NOCARD;
 
 void setup()
 {
-  Serial.begin(115200);  
+  serport.begin(BAUD);  
   pinMode(LED_REG, OUTPUT);
   pinMode(LED_D7,  OUTPUT);
   pinMode(REG, INPUT);
-  pinMode(D7,  INPUT);
-  
-  digitalWrite(LED_REG, HIGH);
-  delay(1000);
-  digitalWrite(LED_REG, LOW);
-  
-  digitalWrite(LED_D7, HIGH);
-  delay(1000);
-  digitalWrite(LED_D7, LOW);
-  
+  pinMode(D7, INPUT);
   //pinMode(LED_D6,  OUTPUT);
   //pinMode(LED_D5,  OUTPUT);
   //pinMode(LED_D4,  OUTPUT);
@@ -129,6 +152,14 @@ void setup()
   //pinMode(LED_D2,  OUTPUT);
   //pinMode(LED_D1,  OUTPUT);
   //pinMode(LED_D0,  OUTPUT);
+  
+  digitalWrite(LED_REG, HIGH);
+  delay(500);
+  digitalWrite(LED_REG, LOW);
+  digitalWrite(LED_D7, HIGH);
+  delay(500);
+  digitalWrite(LED_D7, LOW);
+  
   sendCardReport(REPORT_OK_BOOT, NULL, 0);
 }
 
@@ -290,7 +321,7 @@ void writeLEDs(byte reg, byte data)
 
 void sendCardReport(byte type, byte* pData, byte len)
 {
-  Serial.write(":"); // Start char
+  serport.write(":"); // Start char
   sendHexByte(type); // mandatory type
   
   // Show optional data of any length
@@ -298,7 +329,7 @@ void sendCardReport(byte type, byte* pData, byte len)
   {
     sendHexByte(pData[i]);
   }
-  Serial.println(); // End char
+  serport.println(); // End char
 }
 
 
@@ -306,8 +337,8 @@ void sendCardReport(byte type, byte* pData, byte len)
 
 void sendHexByte(byte val)
 {
-  Serial.write(tohexch(val>>4)); // high nybble
-  Serial.write(tohexch(val));    // low nybble
+  serport.write(tohexch(val>>4)); // high nybble
+  serport.write(tohexch(val));    // low nybble
 }
 
 
@@ -334,13 +365,13 @@ byte readdata(void)
 {
   byte data = 0;
   if (digitalRead(D7)) data |= 1<<7;
-  if (digitalRead(D6)) data |= 1<<6;
-  if (digitalRead(D5)) data |= 1<<5;
-  if (digitalRead(D4)) data |= 1<<4;
-  if (digitalRead(D3)) data |= 1<<3;
-  if (digitalRead(D2)) data |= 1<<2;
-  if (digitalRead(D1)) data |= 1<<1;
-  if (digitalRead(D0)) data |= 1<<0;
+  //if (digitalRead(D6)) data |= 1<<6;
+  //if (digitalRead(D5)) data |= 1<<5;
+  //if (digitalRead(D4)) data |= 1<<4;
+  //if (digitalRead(D3)) data |= 1<<3;
+  //if (digitalRead(D2)) data |= 1<<2;
+  //if (digitalRead(D1)) data |= 1<<1;
+  //if (digitalRead(D0)) data |= 1<<0;
   return data;
 }
 

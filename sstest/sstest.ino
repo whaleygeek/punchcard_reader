@@ -11,8 +11,6 @@ void setup()
 {
   pinMode(LED_RED, OUTPUT);
   pinMode(LED_GREEN, OUTPUT);
-  pinMode(TX, OUTPUT);
-  digitalWrite(TX, HIGH);
   ser.begin(9600);
   digitalWrite(LED_RED, HIGH);
 }
