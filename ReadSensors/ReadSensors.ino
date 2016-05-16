@@ -13,7 +13,8 @@
 
 #define TX 1         // pin 6
 #define RX 3         // not used, pin 2
-#define BAUD 9600
+#define BAUD 1200
+#define PAD() delay(2)
 
 #define REG      3   // pin 2
 #define D7       4   // pin 3
@@ -28,6 +29,7 @@
 
 #if defined(__AVR_ATmega32U4__)
 #define BAUD 115200
+#define PAD()
 
 // Pinouts for Sparkfun ProMicro:
 // https://learn.sparkfun.com/tutorials/pro-micro--fio-v3-hookup-guide/hardware-overview-pro-micro
@@ -160,11 +162,17 @@ void setup()
   delay(500);
   digitalWrite(LED_D7, LOW);
   
-  sendCardReport(REPORT_OK_BOOT, NULL, 0);
+  //sendCardReport(REPORT_OK_BOOT, NULL, 0);
 }
 
 
 //------------------------------------------------------------------------------------------------
+
+void loopz()
+{
+  serport.write('*');
+  delay(100);
+}
 
 void loop()
 {  
@@ -322,6 +330,7 @@ void writeLEDs(byte reg, byte data)
 void sendCardReport(byte type, byte* pData, byte len)
 {
   serport.write(":"); // Start char
+  PAD();
   sendHexByte(type); // mandatory type
   
   // Show optional data of any length
@@ -338,7 +347,9 @@ void sendCardReport(byte type, byte* pData, byte len)
 void sendHexByte(byte val)
 {
   serport.write(tohexch(val>>4)); // high nybble
+  PAD();
   serport.write(tohexch(val));    // low nybble
+  PAD();
 }
 
 
